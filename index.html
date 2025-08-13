@@ -9,8 +9,24 @@
   .controls { text-align: center; padding: 10px; background: #202020; }
   input, select { padding: 5px; margin: 5px; border-radius: 5px; border: none; }
   .container { display: flex; flex-wrap: wrap; justify-content: center; padding: 10px; }
-  .video { background: #202020; margin: 10px; padding: 5px; border-radius: 8px; max-width: 360px; }
-  iframe, video { width: 100%; height: 200px; border: none; border-radius: 8px; background: black; }
+  .video { background: #202020; margin: 10px; border-radius: 8px; max-width: 360px; overflow: hidden; cursor: pointer; }
+  .video img { width: 100%; display: block; border-radius: 8px; }
+  .video p { text-align: center; padding: 5px; margin: 0; font-size: 14px; color: #ccc; }
+  /* Tela cheia personalizada */
+  #fullscreenContainer {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: black;
+    z-index: 9999;
+  }
+  #fullscreenContainer iframe,
+  #fullscreenContainer video {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: black;
+  }
 </style>
 </head>
 <body>
@@ -27,51 +43,69 @@
 
   <div class="container" id="videoContainer"></div>
 
+  <!-- Contêiner para fullscreen -->
+  <div id="fullscreenContainer"></div>
+
   <script>
-    const linkTXT = "https://raw.githubusercontent.com/DougMorDias/site_videos/main/videos.txt"; // Sbstitua seuusuario e repositorio
+    const linkTXT = "https://raw.githubusercontent.com/DougMorDias/site_videos/main/videos.txt"; 
+    let videosGlobal = [];
 
     function extrairID(link) {
-      let videoId = "";
       if (link.includes("youtube.com")) {
         try {
           const url = new URL(link);
-          videoId = url.searchParams.get("v") || "";
+          return url.searchParams.get("v") || "";
         } catch {
-          videoId = "";
+          return "";
         }
       } else if (link.includes("youtu.be")) {
-        videoId = link.split("/").pop().split("?")[0];
+        return link.split("/").pop().split("?")[0];
       }
-      return videoId;
+      return "";
     }
 
-    async function carregarVideos() {
-      try {
-        const resp = await fetch(linkTXT);
-        const texto = await resp.text();
-        const links = texto.split("\n").map((l) => l.trim()).filter((l) => l);
+    function abrirFullscreenPersonalizado(tipo, link) {
+      const container = document.getElementById("fullscreenContainer");
+      container.innerHTML = ""; // limpar antes
 
-        const videos = links.map((link) => ({
-          link,
-          tipo:
-            link.includes("youtube.com") || link.includes("youtu.be")
-              ? "youtube"
-              : "local",
-        }));
-
-        renderVideos(videos);
-      } catch (error) {
-        console.error("Erro ao carregar vídeos:", error);
-        document.getElementById("videoContainer").innerHTML =
-          "<p style='color: red; text-align: center;'>Erro ao carregar vídeos. Verifique o link e permissões do arquivo .txt no GitHub.</p>";
+      if (tipo === "youtube") {
+        const videoId = extrairID(link);
+        const iframe = document.createElement("iframe");
+        iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+        iframe.allowFullscreen = true;
+        container.appendChild(iframe);
+      } else {
+        const videoTag = document.createElement("video");
+        videoTag.src = link;
+        videoTag.controls = true;
+        videoTag.autoplay = true;
+        container.appendChild(videoTag);
       }
+
+      container.style.display = "block";
+
+      if (container.requestFullscreen) {
+        container.requestFullscreen();
+      } else if (container.webkitRequestFullscreen) {
+        container.webkitRequestFullscreen();
+      } else if (container.msRequestFullscreen) {
+        container.msRequestFullscreen();
+      }
+
+      // Sair do fullscreen fecha o contêiner
+      document.addEventListener("fullscreenchange", () => {
+        if (!document.fullscreenElement) {
+          container.style.display = "none";
+          container.innerHTML = "";
+        }
+      });
     }
 
-    function renderVideos(videos, filtroTexto = "", filtroCategoria = "all") {
+    function renderVideos(filtroTexto = "", filtroCategoria = "all") {
       const container = document.getElementById("videoContainer");
       container.innerHTML = "";
 
-      const filtrados = videos.filter(
+      const filtrados = videosGlobal.filter(
         (v) =>
           (filtroCategoria === "all" || v.tipo === filtroCategoria) &&
           v.link.toLowerCase().includes(filtroTexto.toLowerCase())
@@ -89,43 +123,18 @@
 
         if (v.tipo === "youtube") {
           const videoId = extrairID(v.link);
-          if (videoId) {
-            videoDiv.innerHTML = `<iframe src="https://www.youtube.com/embed/${videoId}" allowfullscreen></iframe>`;
-          } else {
-            videoDiv.innerHTML =
-              "<p style='color: red;'>Link de YouTube inválido: " +
-              v.link +
-              "</p>";
-          }
+          const thumbUrl = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+          videoDiv.innerHTML = `<img src="${thumbUrl}" alt="Miniatura do vídeo"><p>YouTube</p>`;
+          videoDiv.addEventListener("click", () => abrirFullscreenPersonalizado(v.tipo, v.link));
         } else {
-          videoDiv.innerHTML = `<video controls><source src="${v.link}" type="video/mp4"></video>`;
+          // Usar um ícone ou imagem padrão para vídeos locais
+          videoDiv.innerHTML = `<img src="https://via.placeholder.com/360x200/000000/FFFFFF?text=Vídeo+Local" alt="Miniatura do vídeo"><p>Local</p>`;
+          videoDiv.addEventListener("click", () => abrirFullscreenPersonalizado(v.tipo, v.link));
         }
 
         container.appendChild(videoDiv);
       });
     }
-
-    document.getElementById("search").addEventListener("input", (e) => {
-      carregarVideos().then(() =>
-        renderVideos(
-          videosGlobal,
-          e.target.value,
-          document.getElementById("category").value
-        )
-      );
-    });
-
-    document.getElementById("category").addEventListener("change", (e) => {
-      carregarVideos().then(() =>
-        renderVideos(
-          videosGlobal,
-          document.getElementById("search").value,
-          e.target.value
-        )
-      );
-    });
-
-    let videosGlobal = [];
 
     async function inicializar() {
       try {
@@ -139,14 +148,27 @@
               ? "youtube"
               : "local",
         }));
-
-        renderVideos(videosGlobal);
+        renderVideos();
       } catch (error) {
         console.error("Erro ao carregar vídeos:", error);
         document.getElementById("videoContainer").innerHTML =
           "<p style='color: red; text-align: center;'>Erro ao carregar vídeos. Verifique o link e permissões do arquivo .txt no GitHub.</p>";
       }
     }
+
+    document.getElementById("search").addEventListener("input", () => {
+      renderVideos(
+        document.getElementById("search").value,
+        document.getElementById("category").value
+      );
+    });
+
+    document.getElementById("category").addEventListener("change", () => {
+      renderVideos(
+        document.getElementById("search").value,
+        document.getElementById("category").value
+      );
+    });
 
     inicializar();
   </script>
